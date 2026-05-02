@@ -1,4 +1,3 @@
-import asyncio
 import random
 import httpx
 import json
@@ -6,9 +5,9 @@ import os
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 
-BOT_TOKEN = "7659324518:AAEHla0oXNEMnN6elU_GD2KxTA-DhSlCIK0"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OWNER_ID = 1780122133
-OPENROUTER_API_KEY = "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"
 
 MEMORY_FILE = "memory.json"
 
@@ -24,14 +23,14 @@ def save_memory():
 
 ranks = {OWNER_ID: "مالك"}
 
-def get_rank(user_id: int):
+def get_rank(user_id):
     return ranks.get(user_id, "عضو")
 
 jokes = [
-    "مرة واحد غبي راح للدكتور... قاله شيل الملعقة من الكوب!",
-    "فيه واحد اشترى مراية قال دي مستعملة!",
-    "مرة واحد نام متأخر، حلم متأخر!",
-    "ليه الكمبيوتر ما يلعبش كورة؟ عشان الفيروسات!"
+    "مرة واحد غبي راح للدكتور قاله شيل الملعقة 😂",
+    "فيه واحد اشترى مراية قال دي مستعملة 😂",
+    "مرة واحد نام متأخر، حلم متأخر 😆",
+    "ليه الكمبيوتر ما يلعبش كورة؟ عشان الفيروسات 🤣"
 ]
 
 games = {}
@@ -46,14 +45,18 @@ def display_board(board):
     ])
 
 def check_winner(board, symbol):
-    wins = [(0,1,2),(3,4,5),(6,7,8),(0,3,6),(1,4,7),(2,5,8),(0,4,8),(2,4,6)]
+    wins = [
+        (0,1,2),(3,4,5),(6,7,8),
+        (0,3,6),(1,4,7),(2,5,8),
+        (0,4,8),(2,4,6)
+    ]
     return any(board[i] == board[j] == board[k] == symbol for i,j,k in wins)
 
 def get_bot_move(board):
     empty = [i for i, val in enumerate(board) if val not in ["X", "O"]]
     return random.choice(empty) if empty else None
 
-async def chatgpt_reply(user_id: int, message: str):
+async def chatgpt_reply(user_id, message):
     url = "https://openrouter.ai/api/v1/chat/completions"
     user_id = str(user_id)
 
@@ -61,7 +64,7 @@ async def chatgpt_reply(user_id: int, message: str):
         user_memory[user_id] = [
             {
                 "role": "system",
-                "content": "اسمك إيفا (Eva)، أنتِ فتاة ذكية وودودة، تتكلمي بالعربية العامية المصرية بطريقة مرحة وخفيفة، وتتصرفي كأنك إنسانة حقيقية وتحبّي تساعدي الناس."
+                "content": "اسمك إيفا (Eva)، بنت لطيفة ومرحة وبتتكلمي بالمصري."
             }
         ]
 
@@ -73,13 +76,14 @@ async def chatgpt_reply(user_id: int, message: str):
     }
 
     data = {
-        "model": "openai/gpt-3.5-turbo",
+        "model": "openai/gpt-4o-mini",
         "messages": user_memory[user_id][-15:]
     }
 
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(url, headers=headers, json=data)
+
             if response.status_code == 200:
                 res = response.json()
                 reply = res["choices"][0]["message"]["content"]
@@ -88,18 +92,17 @@ async def chatgpt_reply(user_id: int, message: str):
                 save_memory()
                 return reply
             else:
-                return "حصل خطأ في الرد."
-        except Exception:
-            return "مشكلة في الاتصال."
+                return f"❌ {response.text}"
+
+        except Exception as e:
+            return f"❌ {str(e)}"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rank = get_rank(update.effective_user.id)
-    await update.message.reply_text(f"مرحبًا بك!\nرتبتك: {rank}")
+    await update.message.reply_text(f"مرحبًا 👋\nرتبتك: {rank}\nأنا إيفا 🤍")
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "/start\n/help\n/info\n/joke\n/xo\n\nابدأ\nمساعدة\nمعلومات\nنكتة\nاكس او\nمسح"
-    )
+    await update.message.reply_text("/start\n/help\n/info\n/joke\n/xo\n\nابدأ\nمساعدة\nمعلومات\nنكتة\nاكس او\nمسح")
 
 async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("المطور: ليلى")
@@ -109,8 +112,12 @@ async def joke_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    games[user_id] = {"board": [str(i+1) for i in range(9)], "player": None, "bot": None, "turn": "X"}
-    await update.message.reply_text("X ولا O؟")
+    games[user_id] = {
+        "board": [str(i+1) for i in range(9)],
+        "player": None,
+        "bot": None
+    }
+    await update.message.reply_text("اختار X أو O")
 
 async def xo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -139,7 +146,7 @@ async def xo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     board[move] = game["player"]
 
     if check_winner(board, game["player"]):
-        await update.message.reply_text("كسبت!")
+        await update.message.reply_text("كسبت 🎉")
         del games[user_id]
         return
 
@@ -148,7 +155,7 @@ async def xo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         board[bot_move] = game["bot"]
 
     if check_winner(board, game["bot"]):
-        await update.message.reply_text("خسرت!")
+        await update.message.reply_text("خسرت 😢")
         del games[user_id]
         return
 
@@ -157,6 +164,14 @@ async def xo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     user = update.effective_user
+    chat = update.effective_chat
+
+    if chat.type == "private" and user.id != OWNER_ID:
+        await context.bot.send_message(
+            chat_id=OWNER_ID,
+            text=f"📩 {user.full_name}:\n{text}"
+        )
+
     lowered = text.lower()
 
     if lowered == "ابدأ":
@@ -172,7 +187,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif lowered == "مسح":
         user_memory.pop(str(user.id), None)
         save_memory()
-        await update.message.reply_text("تم مسح الذاكرة.")
+        await update.message.reply_text("تم مسح الذاكرة")
     else:
         if user.id in games:
             await xo_handler(update, context)
@@ -180,17 +195,14 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply = await chatgpt_reply(user.id, text)
             await update.message.reply_text(reply)
 
-async def setup():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("info", info_command))
-    app.add_handler(CommandHandler("joke", joke_command))
-    app.add_handler(CommandHandler("xo", start_game))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
-    return app
+app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-loop = asyncio.get_event_loop()
-app = loop.run_until_complete(setup())
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("help", help_command))
+app.add_handler(CommandHandler("info", info_command))
+app.add_handler(CommandHandler("joke", joke_command))
+app.add_handler(CommandHandler("xo", start_game))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
+
 print("✅ Eva bot is running...")
 app.run_polling()
